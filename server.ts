@@ -7,7 +7,7 @@ import 'dotenv/config';
 import { GoogleGenAI, Type } from '@google/genai';
 import { DEFAULT_BRAND_KITS } from './src/data/defaultBrandKits.js';
 import { evaluateBrandRules, calculateBrandHealthScore } from './src/lib/ruleEngine.js';
-import { BrandKit, BrandRule, AuditResult, EvidenceItem } from './src/types/index.js';
+import { BrandKit, BrandRule, AuditResult, EvidenceItem, ChatMessage, ChatConversation } from './src/types/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,6 +84,35 @@ let auditHistory: AuditResult[] = [
       status: 'approved',
       notes: 'All critical claims verified against SLA Schedule B. Certified for public wire syndication.'
     }
+  }
+];
+
+// In-Memory Chat Conversations Store
+let chatConversations: ChatConversation[] = [
+  {
+    id: 'conv-default-01',
+    title: 'Brand Governance Overview',
+    brandKitId: 'inkloom-master',
+    createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+    updatedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+    messages: [
+      {
+        id: 'msg-init-1',
+        conversationId: 'conv-default-01',
+        sender: 'assistant',
+        content: `Hello! I am the **InkGuard AI Assistant**, your intelligent brand-governance companion.
+
+I can help you:
+- **Understand & Verify Brand Guidelines** (Voice, tone, rules, approved terminology).
+- **Substantiate Claims with Evidence Trails** (Linking statements to official SLAs and policies).
+- **Improve Marketing & Technical Copy** (Rewriting with brand-aligned clarity).
+- **Explain Content Audit Findings** (Decoding critical vs. warning issues).
+
+How can I assist your brand compliance today?`,
+        timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
+        brandKitId: 'inkloom-master'
+      }
+    ]
   }
 ];
 
@@ -537,6 +566,346 @@ ${target.evidenceItems.map((item, idx) => `
   res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="InkGuard-Report-${target.id}.md"`);
   res.send(markdown);
+});
+
+// Deterministic Chat Assistant Fallback
+function generateFallbackChatResponse(
+  userQuery: string,
+  kit: BrandKit,
+  latestAudit?: AuditResult
+): { content: string; citations?: Array<{ sourceDocument: string; sourceSection: string; quote: string; ruleCode?: string }> } {
+  const query = userQuery.toLowerCase();
+  const citations: Array<{ sourceDocument: string; sourceSection: string; quote: string; ruleCode?: string }> = [];
+
+  if (query.includes('what is inkguard') || query.includes('explain inkguard') || query.includes('how does it work')) {
+    return {
+      content: `**InkGuard AI** is an intelligent enterprise brand-governance platform created by **Inkloom AI** (presented by **Nandini Goel**, ABES Engineering College).
+
+Its unique differentiator is the **5-Pillar Evidence Trail**:
+1. **What was flagged:** Exact text coordinates and character offsets.
+2. **Why it was flagged:** Actionable explanation of misleading statements or tone mismatches.
+3. **Approved source citation:** Authoritative quote from official corporate guidelines and SLAs.
+4. **Suggested correction:** Context-aware 1-click replacement.
+5. **Human review gate:** Routing to Brand Lead or Legal Counsel before publishing.
+
+It ensures marketing copy, press releases, and customer communications never misrepresent company capabilities or violate regulatory compliance.`,
+      citations: [
+        {
+          sourceDocument: 'Inkloom Brand Governance Manual 2026',
+          sourceSection: 'Executive Charter §1.0',
+          quote: 'InkGuard AI enforces brand consistency and evidence-backed claims across all publishing channels.'
+        }
+      ]
+    };
+  }
+
+  if (query.includes('brand guideline') || query.includes('tone') || query.includes('voice') || query.includes('color') || query.includes('palette')) {
+    const toneRule = kit.rules.find(r => r.category === 'voice_and_tone');
+    if (toneRule) {
+      citations.push({
+        sourceDocument: toneRule.sourceDocument,
+        sourceSection: toneRule.sourceSection,
+        quote: toneRule.approvedCitation,
+        ruleCode: toneRule.ruleCode
+      });
+    }
+    return {
+      content: `Here are the approved guidelines for **${kit.name}**:
+
+- **Tone & Voice:** Authoritative, clear, and grounded in empirical facts. Never use ungrounded buzzwords like "game-changing", "miracle", or "magic AI".
+- **Primary Palette:** Primary ${kit.primaryColor}, Accent ${kit.accentColor}.
+- **Contractual SLA:** ${kit.factSheet.slaUptime}
+- **Active Certifications:** ${kit.factSheet.certifications.join(', ')}
+
+**Evidence Source:** ${toneRule ? `${toneRule.sourceDocument} (${toneRule.sourceSection})` : 'Brand Playbook'}
+> "${toneRule ? toneRule.approvedCitation : 'We communicate with quiet authority and verifiable facts.'}"`,
+      citations
+    };
+  }
+
+  if (query.includes('unsupported claim') || query.includes('uptime') || query.includes('sla') || query.includes('guarantee')) {
+    const fcRule = kit.rules.find(r => r.category === 'factual_claims');
+    if (fcRule) {
+      citations.push({
+        sourceDocument: fcRule.sourceDocument,
+        sourceSection: fcRule.sourceSection,
+        quote: fcRule.approvedCitation,
+        ruleCode: fcRule.ruleCode
+      });
+    }
+    return {
+      content: `**Unsupported Promotional Claims** are statements made in public copy that promise outcomes, uptime, or technical capabilities without contractual or empirical backing.
+
+For **${kit.name}**:
+- **Forbidden Claims:** ${kit.factSheet.forbiddenClaims.join('; ')}.
+- **Approved Availability:** Only cite the **${kit.factSheet.slaUptime}**.
+- Absolute guarantees like "100% bug-free", "zero downtime", or "infallible AI" are strictly prohibited because they violate truth-in-advertising standards.
+
+**Official Citation:**
+> "${fcRule ? fcRule.approvedCitation : 'Availability statements must cite the contractual SLA.'}"`,
+      citations
+    };
+  }
+
+  if (query.includes('latest') && (query.includes('review') || query.includes('audit')) && latestAudit) {
+    return {
+      content: `Here is the breakdown of your latest audit for **${latestAudit.channel}**:
+- **Health Score:** ${latestAudit.healthScore}/100
+- **Total Flagged:** ${latestAudit.summary.totalFlagged} issues (${latestAudit.summary.criticalCount} Critical, ${latestAudit.summary.warningCount} Warnings)
+- **Resolved:** ${latestAudit.summary.resolvedCount || 0} fixed
+- **Sign-Off Status:** ${latestAudit.signoff ? `Approved by ${latestAudit.signoff.signedBy}` : 'Pending Sign-Off'}
+
+Would you like me to help rewrite any of the open flagged sections to make them compliant?`
+    };
+  }
+
+  if (query.includes('improve') || query.includes('rewrite') || query.includes('professional') || query.includes('copy')) {
+    return {
+      content: `To improve your content for **${kit.name}**:
+1. **Remove Hyperbolic Buzzwords:** Replace "revolutionary", "game-changing", or "miracle" with descriptive mechanisms (e.g., "evidence-first", "systematic").
+2. **Correct Brand Terminology:** Ensure product names follow official casing ("InkGuard AI", not "InkGuard Bot").
+3. **Anchor Metrics in SLA:** Reference verified uptime (${kit.factSheet.slaUptime}) rather than absolute guarantees.
+4. **Clear Actionable CTAs:** Avoid vague links like "click here"; use descriptive anchor text.
+
+Paste any draft directly into this chat and I will rewrite it to be 100% compliant with your active guidelines!`
+    };
+  }
+
+  return {
+    content: `I've analyzed your question regarding **${kit.name}**.
+
+Based on our active brand guidelines and fact sheets:
+- **Verified Facts:** ${kit.factSheet.verifiedClaims.slice(0, 2).join('; ')}.
+- **Governance Standards:** All claims must be substantiated with Evidence Trail citations.
+- If you're asking about a specific metric or claim not in our records: **No approved evidence found in the active brand guidelines.**
+
+Would you like me to check a specific paragraph, explain a brand rule, or help adjust the tone of your draft?`
+  };
+}
+
+// CHATBOT API ENDPOINTS
+// 1. List conversations
+app.get('/api/chat/conversations', (req, res) => {
+  const summaries = chatConversations
+    .slice()
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .map(c => ({
+      id: c.id,
+      title: c.title,
+      brandKitId: c.brandKitId,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      messageCount: c.messages.length,
+      lastMessage: c.messages[c.messages.length - 1]?.content.slice(0, 90) || ''
+    }));
+  res.json(summaries);
+});
+
+// 2. Get specific conversation
+app.get('/api/chat/conversations/:id', (req, res) => {
+  const { id } = req.params;
+  const conv = chatConversations.find(c => c.id === id);
+  if (!conv) {
+    return res.status(404).json({ error: 'Conversation not found' });
+  }
+  res.json(conv);
+});
+
+// 3. Create new conversation
+app.post('/api/chat/conversations', (req, res) => {
+  const { brandKitId } = req.body;
+  const kit = getActiveKit(brandKitId);
+  const newConv: ChatConversation = {
+    id: `conv-${Date.now()}`,
+    title: 'New Conversation',
+    brandKitId: kit.id,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    messages: [
+      {
+        id: `msg-${Date.now()}`,
+        conversationId: `conv-${Date.now()}`,
+        sender: 'assistant',
+        content: `Hello! I'm the **InkGuard AI Assistant** for **${kit.name}**.\n\nAsk me anything about brand rules, tone guidelines, fact verification, or paste copy here for brand-aligned rewriting.`,
+        timestamp: new Date().toISOString(),
+        brandKitId: kit.id
+      }
+    ]
+  };
+  chatConversations.unshift(newConv);
+  res.json(newConv);
+});
+
+// 4. Delete conversation
+app.delete('/api/chat/conversations/:id', (req, res) => {
+  const { id } = req.params;
+  chatConversations = chatConversations.filter(c => c.id !== id);
+  res.json({ success: true });
+});
+
+// 5. Send message and receive AI response
+app.post('/api/chat/message', async (req, res) => {
+  try {
+    const { conversationId, message, brandKitId, context } = req.body;
+
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ error: 'Message content is required' });
+    }
+
+    const kit = getActiveKit(brandKitId);
+
+    // Find or create conversation
+    let conv = chatConversations.find(c => c.id === conversationId);
+    if (!conv) {
+      conv = {
+        id: conversationId || `conv-${Date.now()}`,
+        title: message.slice(0, 35) + (message.length > 35 ? '...' : ''),
+        brandKitId: kit.id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messages: []
+      };
+      chatConversations.unshift(conv);
+    }
+
+    // Auto-update title if it's "New Conversation" or first user message
+    const userMessageCount = conv.messages.filter(m => m.sender === 'user').length;
+    if (userMessageCount === 0 || conv.title === 'New Conversation') {
+      conv.title = message.slice(0, 36) + (message.length > 36 ? '...' : '');
+    }
+
+    // Append user message
+    const userMsg: ChatMessage = {
+      id: `msg-u-${Date.now()}`,
+      conversationId: conv.id,
+      sender: 'user',
+      content: message.trim(),
+      timestamp: new Date().toISOString(),
+      brandKitId: kit.id
+    };
+    conv.messages.push(userMsg);
+
+    // Determine relevant latest audit if available
+    let latestAudit: AuditResult | undefined;
+    if (context?.latestAuditId) {
+      latestAudit = auditHistory.find(h => h.id === context.latestAuditId);
+    } else if (auditHistory.length > 0) {
+      latestAudit = auditHistory[0];
+    }
+
+    let assistantContent = '';
+    let citations: Array<{ sourceDocument: string; sourceSection: string; quote: string; ruleCode?: string }> = [];
+
+    // Attempt Gemini 3.8 Flash Generation
+    if (aiClient) {
+      try {
+        const rulesList = kit.rules.map(r => 
+          `- [${r.ruleCode} | Category: ${r.category} | Severity: ${r.severity}]: ${r.name} -> "${r.approvedCitation}" (${r.sourceDocument} · ${r.sourceSection})`
+        ).join('\n');
+
+        const contextInfo = `
+Channel: ${context?.channel || 'General Brand Communication'}
+Draft Snippet: ${context?.draftSnippet ? `"""${context.draftSnippet}"""` : 'None provided'}
+Latest Review Score: ${latestAudit ? `${latestAudit.healthScore}/100 with ${latestAudit.summary.totalFlagged} issues (${latestAudit.summary.criticalCount} critical)` : 'None'}
+`;
+
+        const systemInstruction = `You are the "InkGuard AI Assistant", the intelligent brand-governance companion for InkGuard AI (developed by Inkloom AI, presented by Nandini Goel at ABES Engineering College).
+
+Tagline: "Your intelligent brand-governance companion."
+
+YOUR CORE MISSION & BEHAVIORS:
+1. Evidence-First Principle: Ground brand answers in the active brand kit. If you cite a rule, include the source format: [Source: Document Name · Section].
+2. Fact-Checking & Veracity:
+   - Only confirm facts, SLAs, certifications, and dates present in the active brand fact sheet.
+   - If user asks about an unsupported or unapproved claim, clearly say "No approved evidence found in the active brand guidelines."
+   - Never invent or fabricate numbers, partners, or policies.
+3. Content Improvement:
+   - When asked to improve, rewrite, or adjust text, remove banned buzzwords ('revolutionary', 'magic', 'game-changing', 'infallible') and use active brand terminology.
+   - Maintain clear, professional, concise, authoritative prose.
+4. Review Result Explanation:
+   - Explain why sentences are flagged (Factual Claims, Voice & Tone, Terminology, WCAG Accessibility, Legal).
+   - Distinguish between Critical (must fix) and Warning/Advisory. Explain that human sign-off (Brand Lead / Legal) is a safety requirement.
+5. Tone: Professional, helpful, respectful, clear, and honest about uncertainty.
+
+ACTIVE BRAND KIT:
+- Name: ${kit.name}
+- Industry: ${kit.industry}
+- Tagline: ${kit.tagline}
+- Primary / Accent Color: ${kit.primaryColor} / ${kit.accentColor}
+- Verified SLA: ${kit.factSheet.slaUptime}
+- Founded: ${kit.factSheet.establishedYear} (${kit.factSheet.headquarters})
+- Verified Claims: ${JSON.stringify(kit.factSheet.verifiedClaims)}
+- Forbidden Claims: ${JSON.stringify(kit.factSheet.forbiddenClaims)}
+- Certifications: ${JSON.stringify(kit.factSheet.certifications)}
+- Terminology Mappings: ${JSON.stringify(kit.terminologyMap)}
+
+APPROVED RULES & CITATIONS:
+${rulesList}
+
+APPLICATION CONTEXT:
+${contextInfo}`;
+
+        const historyContext = conv.messages.slice(-6).map(m => 
+          `${m.sender === 'user' ? 'User' : 'Assistant'}: ${m.content}`
+        ).join('\n\n');
+
+        const prompt = `${historyContext}\n\nUser: ${message}\n\nAssistant:`;
+
+        const response = await aiClient.models.generateContent({
+          model: 'gemini-3.8-flash',
+          contents: prompt,
+          config: {
+            systemInstruction
+          }
+        });
+
+        assistantContent = (response.text || '').trim();
+
+        // Extract any citation quotes matching rules
+        for (const rule of kit.rules) {
+          if (assistantContent.includes(rule.sourceDocument) || assistantContent.includes(rule.ruleCode)) {
+            citations.push({
+              sourceDocument: rule.sourceDocument,
+              sourceSection: rule.sourceSection,
+              quote: rule.approvedCitation,
+              ruleCode: rule.ruleCode
+            });
+          }
+        }
+      } catch (geminiError) {
+        console.warn('Gemini chat error, switching to deterministic assistant:', geminiError);
+      }
+    }
+
+    // Fallback if Gemini was unavailable or returned empty
+    if (!assistantContent) {
+      const fallback = generateFallbackChatResponse(message, kit, latestAudit);
+      assistantContent = fallback.content;
+      citations = fallback.citations || [];
+    }
+
+    // Append assistant response
+    const assistantMsg: ChatMessage = {
+      id: `msg-a-${Date.now()}`,
+      conversationId: conv.id,
+      sender: 'assistant',
+      content: assistantContent,
+      timestamp: new Date().toISOString(),
+      citations: citations.length > 0 ? citations : undefined,
+      brandKitId: kit.id
+    };
+    conv.messages.push(assistantMsg);
+    conv.updatedAt = new Date().toISOString();
+
+    res.json({
+      conversationId: conv.id,
+      userMessage: userMsg,
+      assistantMessage: assistantMsg
+    });
+  } catch (err: any) {
+    console.error('Chat endpoint error:', err);
+    res.status(500).json({ error: err.message || 'Chat service error' });
+  }
 });
 
 // Analytics / Stats

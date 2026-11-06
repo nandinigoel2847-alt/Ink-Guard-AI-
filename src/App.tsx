@@ -5,6 +5,7 @@ import { EvidenceTrailView } from './components/EvidenceTrailView';
 import { BrandRulesManager } from './components/BrandRulesManager';
 import { AuditHistory } from './components/AuditHistory';
 import { ProjectDossierModal } from './components/ProjectDossierModal';
+import { ChatbotDrawer } from './components/Chatbot/ChatbotDrawer';
 import { DEFAULT_BRAND_KITS } from './data/defaultBrandKits';
 import { AuditResult, BrandKit } from './types';
 import { api } from './services/api';
@@ -157,6 +158,14 @@ export default function App() {
       {showDossier && (
         <ProjectDossierModal onClose={() => setShowDossier(false)} />
       )}
+
+      {/* InkGuard AI Assistant Chatbot (Floating Companion) */}
+      <ChatbotDrawer
+        activeBrandKit={activeBrandKit}
+        latestAudit={history[0] || null}
+        onBrandKitChange={handleBrandKitChange}
+        brandKits={brandKits}
+      />
     </div>
   );
 }

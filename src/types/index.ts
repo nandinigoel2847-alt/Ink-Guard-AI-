@@ -98,3 +98,28 @@ export interface AuditResult {
     notes?: string;
   };
 }
+
+export interface ChatMessage {
+  id: string;
+  conversationId: string;
+  sender: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  citations?: Array<{
+    sourceDocument: string;
+    sourceSection: string;
+    quote: string;
+    ruleCode?: string;
+  }>;
+  brandKitId?: string;
+}
+
+export interface ChatConversation {
+  id: string;
+  title: string;
+  brandKitId?: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: ChatMessage[];
+}
+

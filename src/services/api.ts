@@ -110,5 +110,54 @@ export const api = {
   async getStats() {
     const res = await fetch('/api/stats');
     return res.json();
+  },
+
+  // Chatbot Assistant Methods
+  async getChatConversations() {
+    const res = await fetch('/api/chat/conversations');
+    return res.json();
+  },
+
+  async getChatConversation(id: string) {
+    const res = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}`);
+    return res.json();
+  },
+
+  async createChatConversation(brandKitId?: string) {
+    const res = await fetch('/api/chat/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brandKitId })
+    });
+    return res.json();
+  },
+
+  async deleteChatConversation(id: string) {
+    const res = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+    return res.json();
+  },
+
+  async sendChatMessage(params: {
+    conversationId?: string;
+    message: string;
+    brandKitId?: string;
+    context?: {
+      channel?: string;
+      draftSnippet?: string;
+      latestAuditId?: string;
+    };
+  }) {
+    const res = await fetch('/api/chat/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Chat failed' }));
+      throw new Error(err.error || 'Server error in chatbot assistant');
+    }
+    return res.json();
   }
 };
