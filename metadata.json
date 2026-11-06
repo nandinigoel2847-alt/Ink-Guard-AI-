@@ -1,0 +1,6 @@
+{
+  "name": "InkGuard AI — The Evidence-First Brand Guardian",
+  "description": "Enterprise brand-governance platform catching copy mistakes, verifying claims with citation-backed evidence trails, and protecting brand integrity.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
